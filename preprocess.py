@@ -46,8 +46,26 @@ def is_skip_data(flag, data):
 def has_long_answer(start_token, end_token):
   return (start_token >= 0 and end_token >= 0)
 
-def get_first_annotation(e):
-    
+def get_first_annotation(data):
+    pass
+
+def get_text(data, start, end):
+    text = []
+    for i in range(start, end):
+        tokens = data["document"]['tokens']
+        if not tokens["is_html"][i]:
+            token = tokens["token"][i].replace(" ", "")
+            text.append(token)
+    return " ".join(text)
+
+def token_to_char_offset(data, start, end):
+    char_offset = 0
+    for i in range(start, end):
+        tokens = data["document"]['tokens']
+        if not tokens["is_html"][i]:
+            token = tokens["token"][i].replace(" ", "")
+            char_offset += len(token) + 1
+    return char_offset
 
 def clean_html_tokens(dataset, flag, batch_size=10000):
     processed_dataset = []
@@ -58,58 +76,55 @@ def clean_html_tokens(dataset, flag, batch_size=10000):
         if is_skip_data(flag, data):  # short/yes/no answer
             continue
         
-        if flag == 'test':
-            document_token = [item['token'] for item in data['document_tokens']]
-            start_token = data['annotations'][0]['long_answer']['start_token']
-            end_token = data['annotations'][0]['long_answer']['end_token']
-        else:
+        if flag == 'train':
             document_token = data['document']['tokens']['token']
             start_token = data['annotations']['long_answer'][0]['start_token']
             end_token = data['annotations']['long_answer'][0]['end_token']
-
-        answer_token = document_token[start_token:end_token]
-        answer_text = ' '.join(answer_token)
+        
+            clean_context = get_text(data, 0, len(document_token))
+            clean_answer = get_text(data, start_token, end_token)
             
-        # HTML 태그 제거
-        clean_text = BeautifulSoup(answer_text, "html.parser").get_text(separator="")
-        clean_answer = ' '.join(clean_text.split())
+            start_position, end_position = -1, -1
+            if has_long_answer(start_token, end_token):
+                start_position = token_to_char_offset(data, 0, start_token)
+                end_position = token_to_char_offset(data, 0, end_token) - 1
+            
+            processed_dataset.append({
+                'question': data['question']['text'],
+                'answer': clean_answer,
+                'context': clean_context,
+                'start_position': start_position,
+                'end_position': end_position
+            })
         
-        if not has_long_answer(start_token, end_token):
-            clean_answer = ''
-        
-        processed_dataset.append({
-            'question': data['question_text'] if flag == 'test' else data['question']['text'],
-            'context': clean_answer,
-        })
-        
-        if flag != 'validation':
-            processed_documents.append(clean_answer)
+        # if flag != 'validation':
+        #     processed_documents.append(clean_answer)
                 
-        if (i + 1) % batch_size == 0:
-            dataset_batch_file_name = f"cleaned_{flag}_data_{batch_count}.json"
-            if flag != 'validation':
-                document_batch_file_name = f"cleaned_{flag}_document_{batch_count}.json"
+        # if (i + 1) % batch_size == 0:
+        #     dataset_batch_file_name = f"cleaned_{flag}_data_{batch_count}.json"
+        #     if flag != 'validation':
+        #         document_batch_file_name = f"cleaned_{flag}_document_{batch_count}.json"
             
-            save_data(processed_dataset, os.path.join('data/cleaned', dataset_batch_file_name))
-            if flag != 'validation':
-                save_data(processed_documents, os.path.join('data/document', document_batch_file_name))
+        #     save_data(processed_dataset, os.path.join('data/cleaned', dataset_batch_file_name))
+        #     if flag != 'validation':
+        #         save_data(processed_documents, os.path.join('data/document', document_batch_file_name))
             
-            batch_count += 1
+        #     batch_count += 1
             
-            processed_dataset.clear()
-            processed_documents.clear()
+        #     processed_dataset.clear()
+        #     processed_documents.clear()
     
-    if processed_dataset:
-        dataset_batch_file_name = f"cleaned_{flag}_data_{batch_count}.json"
-        if flag != 'validation':
-            document_batch_file_name = f"cleaned_{flag}_document_{batch_count}.json"
+    # if processed_dataset:
+    #     dataset_batch_file_name = f"cleaned_{flag}_data_{batch_count}.json"
+    #     if flag != 'validation':
+    #         document_batch_file_name = f"cleaned_{flag}_document_{batch_count}.json"
         
-        save_data(processed_dataset, os.path.join('data/cleaned', dataset_batch_file_name))
-        if flag != 'validation':
-            save_data(processed_documents, os.path.join('data/document', document_batch_file_name))
+    #     save_data(processed_dataset, os.path.join('data/cleaned', dataset_batch_file_name))
+    #     if flag != 'validation':
+    #         save_data(processed_documents, os.path.join('data/document', document_batch_file_name))
         
-    if flag != 'validation': 
-        merge_documents(flag)
+    # if flag != 'validation': 
+    #     merge_documents(flag)
 
 def tokenize_data(input):
     return tokenizer(
